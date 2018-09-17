@@ -250,7 +250,7 @@ object Schema {
 
     def baseHash: String = signedObservationEdge.signatureBatch.hash
     def parentHashes = Seq(observationEdge.left.hash, observationEdge.right.hash)
-    def parents = Seq(observationEdge.left, observationEdge.right)
+    def parents: Seq[TypedEdgeHash] = Seq(observationEdge.left, observationEdge.right)
 
     def store[T <: AnyRef](db: ActorRef, t: Option[T] = None, resolved: Boolean = false): Unit = {
       db ! DBPut(signedObservationEdge.signatureBatch.hash, t.getOrElse(observationEdge))

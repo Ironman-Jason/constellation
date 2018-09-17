@@ -28,7 +28,7 @@ trait EdgeDAO {
   @volatile var validationThresholdMet: Set[String] = Set()
 
 
-  val resolveNotifierCallbacks: TrieMap[String, TrieMap[String, () => Unit]] = TrieMap()
+  val resolveNotifierCallbacks: TrieMap[String, Seq[String]] = TrieMap()
 
   val transactionExecutionContext: ExecutionContextExecutor =
     ExecutionContext.fromExecutor(Executors.newFixedThreadPool(200))

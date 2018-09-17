@@ -1,32 +1,39 @@
 package org.constellation.consensus
 
-import akka.actor.ActorRef
+import java.util.concurrent.TimeUnit
+
+import akka.pattern.ask
 import org.constellation.Data
-import org.constellation.LevelDB.DBPut
+import org.constellation.LevelDB.{DBGet, DBPut}
 import org.constellation.primitives.Schema._
 import Validation.TransactionValidationStatus
+import akka.util.Timeout
 import com.typesafe.scalalogging.Logger
+import org.constellation.consensus.Resolve.resolveChildCheckpoint
 import org.constellation.primitives.{APIBroadcast, EdgeService, IncrementMetric, UpdateMetric}
 import org.constellation.util.SignHelp
 
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 
 object EdgeProcessor {
-
-
+  implicit val timeout: Timeout = Timeout(5, TimeUnit.SECONDS)
   val logger = Logger(s"EdgeProcessor")
 
   def handleCheckpoint(cb: CheckpointBlock, dao: Data, internalMessage: Boolean = false)(implicit executionContext: ExecutionContext): Unit = {
-
-    if (!internalMessage) {
+    if (internalMessage) {
       dao.metricsManager ! IncrementMetric("checkpointMessagesReceived")
+      val unresolvedChildHashes: Seq[Future[Option[SignedObservationEdgeCache]]] =
+        dao.resolveNotifierCallbacks(cb.checkpoint.edge.observationEdge.hash)
+        .map(hash => (dao.dbActor ? DBGet(hash)).mapTo[Option[SignedObservationEdgeCache]].filter(_.exists(_.resolved)))
+
+      unresolvedChildHashes.foreach( observationEdgeCache =>
+        observationEdgeCache.foreach(_.foreach(ch => resolveChildCheckpoint(ch.signedObservationEdge.hash, dao)))
+      )
     } else {
       dao.metricsManager ! IncrementMetric("internalCheckpointMessagesReceived")
+      Resolve.resolveCheckpoint(dao, cb)
     }
-
-    Resolve.resolveCheckpoint(dao, cb)
-
   }
 
   // TODO : Add checks on max number in mempool and max num signatures.
@@ -145,7 +152,7 @@ object EdgeProcessor {
       val txPrime = updateWithSelfSignatureEmit(tx, dao)
       // Add to memPool or update an existing hash with new signatures and check for signature threshold
       updateMergeMemPool(txPrime, dao)
-      if (dao.canCreateCheckpoint) handleCheckpoint(dao, tx, t)
+      if (dao.canCreateCheckpoint) formCheckpoint(dao, tx, t)
 
     case t: TransactionValidationStatus => reportInvalidTransaction(dao: Data, t: TransactionValidationStatus)
       // TODO : Add info somewhere so node can find out transaction was invalid on a callback
@@ -161,7 +168,7 @@ object EdgeProcessor {
     }
   }
 
-  def handleCheckpoint(dao: Data, tx: Transaction, t: TransactionValidationStatus): Unit = {
+  def formCheckpoint(dao: Data, tx: Transaction, t: TransactionValidationStatus): Unit = {
     val checkpointBlock = formCheckpointUpdateState(dao, tx)
     dao.metricsManager ! IncrementMetric("checkpointBlocksCreated")
     val cbBaseHash = checkpointBlock.hash

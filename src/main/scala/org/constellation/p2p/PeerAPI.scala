@@ -74,7 +74,7 @@ class PeerAPI(val dao: Data)(implicit executionContext: ExecutionContext, val ti
             complete(StatusCodes.OK)
         }
       } ~
-      get {
+      get {// todo will be used by resolver
         val memPoolPresence = dao.transactionMemPool.get(s)
         val response = memPoolPresence.map { t =>
           TransactionQueryResponse(s, Some(t), inMemPool = true, inDAG = false, None)
