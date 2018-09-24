@@ -275,7 +275,7 @@ object Schema {
                                    rxTime: Long = System.currentTimeMillis()
                                  )
 
-  case class CheckpointCacheData(resolvedCB: CheckpointEdge, inDAG: Boolean = false, resolved: Boolean = false)
+  case class CheckpointCacheData(resolvedCB: CheckpointBlock, inDAG: Boolean = false, resolved: Boolean = false)
 
   case class SignedObservationEdgeCache(signedObservationEdge: SignedObservationEdge, resolved: Boolean = false)
 
@@ -288,9 +288,9 @@ object Schema {
 
     def store(db: ActorRef, inDAG: Boolean = false): Unit = {
       transactions.foreach { rt =>
-        rt.edge.store(db, Some(TransactionCacheData(rt, inDAG = inDAG)))
+        rt.edge.store(db, Some(TransactionCacheData(rt, inDAG = inDAG, Some(hash))))//Todo this did it, store tx's as seq?
       }
-      checkpoint.edge.store(db, Some(CheckpointCacheData(checkpoint, inDAG = inDAG)))
+      checkpoint.edge.store(db, Some(CheckpointCacheData(this, inDAG = inDAG)))
     }
   }
 

@@ -78,8 +78,8 @@ class PeerAPI(val dao: Data)(implicit executionContext: ExecutionContext, val ti
         val memPoolPresence = dao.transactionMemPool.get(s)
         val response = memPoolPresence.map { t =>
           TransactionQueryResponse(s, Some(t), inMemPool = true, inDAG = false, None)
-        }.getOrElse{
-          (dao.dbActor ? DBGet(s)).mapTo[Option[TransactionCacheData]].get().map{
+        }.getOrElse {
+          (dao.dbActor ? DBGet(s)).mapTo[Option[TransactionCacheData]].get().map {
             cd =>
               TransactionQueryResponse(s, Some(cd.transaction), memPoolPresence.nonEmpty, cd.inDAG, cd.cbEdgeHash)
           }.getOrElse{

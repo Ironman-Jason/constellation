@@ -26,9 +26,9 @@ object EdgeService {
     val transactionsUsed = transactionMemPoolThresholdMet.take(minCheckpointFormationThreshold)
     val updatedTransactionMemPoolThresholdMet = transactionMemPoolThresholdMet -- transactionsUsed
 
-    val checkpointEdgeData = CheckpointEdgeData(transactionsUsed.toSeq.sorted)
+    val checkpointEdgeData: CheckpointEdgeData = CheckpointEdgeData(transactionsUsed.toSeq.sorted)
 
-    val tips = validationTips.take(2)
+    val tips: Seq[SignedObservationEdge] = validationTips.take(2)
     val filteredValidationTips = validationTips.filterNot(tips.contains)
 
     val observationEdge = ObservationEdge(

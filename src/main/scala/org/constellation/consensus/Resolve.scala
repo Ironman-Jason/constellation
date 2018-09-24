@@ -15,51 +15,36 @@ object Resolve {
 
   implicit val timeout: Timeout = Timeout(5, TimeUnit.SECONDS)
 
-  def resolveChildCheckpoint(parentCh: String, dao: Data)(implicit executionContext: ExecutionContext): Unit = {
+  def markUnresolvedChildCheckpoint(parentCh: String, dao: Data)(implicit executionContext: ExecutionContext): Unit = {
     //todo mark the child checkpoint blocks resolved, add to cache
     val childrenHashes = dao.resolveNotifierCallbacks(parentCh).map {
       child =>
-      val checkpointBlockToHash = (dao.dbActor ? DBGet(child)).mapTo[Option[CheckpointBlock]]//send checkpoint block of child back to resolveCheckpoint to be validated
+        val checkpointBlockToHash = dao.hashToCheckpoint(parentCh)//send checkpoint block of child back to resolveCheckpoint to be validated
+
+//        val checkpointBlockToHash = (dao.dbActor ? DBGet(child)).mapTo[Option[CheckpointBlock]]//send checkpoint block of child back to resolveCheckpoint to be validated
         checkpointBlockToHash
     }
-    Future.sequence(childrenHashes).foreach(seq => seq.foreach(op => op.foreach(resolveCheckpoint(dao, _))))
   }
 
   // @synchronized?
-  def resolveCheckpoint(dao: Data, cb: CheckpointBlock)(implicit executionContext: ExecutionContext): Future[Boolean] = {
-    val loadingParents: Future[Seq[(String, Option[SignedObservationEdgeCache])]] =
+  def resolveCheckpoint(dao: Data, cb: CheckpointBlock)(implicit executionContext: ExecutionContext) = {
+    val ancestry: Future[Seq[(String, Option[CheckpointCacheData])]] =
       Future.sequence(cb.checkpoint.edge.parentHashes
         .map { h =>
-          (dao.dbActor ? DBGet(h)).mapTo[Option[SignedObservationEdgeCache]].map(l => h -> l)
+          (dao.dbActor ? DBGet(h)).mapTo[Option[CheckpointCacheData]].map(l => h -> l)
         }
       )
-    //make sure not already resolving same hash somewhere else if valid but unresolved add to trie map
-    val resolvedParents = loadingParents.map { parents =>
-      parents.map { case (parentHash, parentCache) =>
-        if (parentCache.exists(!_.resolved)) parentCache.foreach { p =>
-          dao.resolveNotifierCallbacks(parentHash).+(cb.checkpoint.edge.observationEdge.hash)// points parent -> child so we can update as resolved
-          false
-          // todo unresolved pass actual checkpoint block of p into handleCheckpoint
-//          EdgeProcessor.handleCheckpoint(cb.checkpoint.edge.parents.filter(_.hash == parentHash).head, true)
-        }
-          true
-      }
+    val isResolved = ancestry.map { parents =>
+      parents.map { case (parentHash, parentCb: Option[CheckpointCacheData]) =>
+        parentCb.exists(!_.resolved)
+      }.forall(_ == true)
     }
-    resolvedParents.map(_.forall(_ == true))
+    isResolved.foreach {
+     resolved =>
+       if (resolved) {
+         dao.resolveNotifierCallbacks(cb.hash).+(cb.checkpoint.edge.observationEdge.hash) // points parent -> child so we can update as resolved //todo think of cb as a parent. if parent resolved look for children. if cb is not resolved, store it's hash to children. We want the result to be a future,.seq of this parent and its children. then we do an onComplete inside of th endppoint.
+       }
+       resolved
+  }
   }
 }
-
-
-
-//if resolved, see if this is a dependency of an awaiting resolution and
-//    val unresolvedChildHashes: Seq[Future[Option[SignedObservationEdgeCache]]] =
-//      dao.resolveNotifierCallbacks(cb.checkpoint.edge.observationEdge.hash)
-//        .map(hash => (dao.dbActor ? DBGet(hash))
-//          .mapTo[Option[SignedObservationEdgeCache]].filter(_.exists(_.resolved))
-//        )
-//    unresolvedChildHashes.foreach(ch =>
-//      resolveChildCheckpoint
-//        EdgeProcessor.handleCheckpoint(ch, true)
-//    )
-//    // Later on need to add transaction resolving, they're all already here though (sent with the request)
-// which adds redundancy but simplifies this step.

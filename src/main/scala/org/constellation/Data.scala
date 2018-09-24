@@ -12,6 +12,7 @@ class Data extends MetricsExt
   with NodeData
   with Ledger
   with TransactionExt
+  with EdgeExt
   with Genesis
   with EdgeDAO {
 
